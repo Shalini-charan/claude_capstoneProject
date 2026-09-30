@@ -18,7 +18,10 @@ DocEntry = namedtuple("DocEntry", ["name", "signature", "docstring"])
 def _unparse_node(node) -> str:
     """Render an annotation AST node to a string (Python 3.8+ compatible)."""
     if sys.version_info >= (3, 9):
-        return ast.unparse(node)
+        # ast.unparse returns '' for unrecognised nodes — fall through to the name
+        result = ast.unparse(node)
+        if result:
+            return result
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -33,7 +36,8 @@ def _unparse_node(node) -> str:
         return f"{_unparse_node(node.value)}[{_unparse_node(slc)}]"
     if isinstance(node, ast.Tuple):
         return ", ".join(_unparse_node(e) for e in node.elts)
-    return ""
+    # Unknown annotation node — emit the raw type name rather than a dangling colon
+    return type(node).__name__
 
 
 def _build_signature(node) -> str:
@@ -48,7 +52,13 @@ def _build_signature(node) -> str:
     all_positional = posonlyargs + args.args
     defaults_start = len(all_positional) - len(args.defaults)
 
+    # Skip self/cls before building strings — compare arg.arg, not the assembled part
+    skip_first = bool(all_positional) and all_positional[0].arg in ("self", "cls")
+    start = 1 if skip_first else 0
+
     for i, arg in enumerate(all_positional):
+        if i < start:
+            continue
         part = arg.arg
         if arg.annotation:
             part += f": {_unparse_node(arg.annotation)}"
@@ -56,6 +66,9 @@ def _build_signature(node) -> str:
         if di >= 0:
             part += f" = {_unparse_node(args.defaults[di])}"
         parts.append(part)
+        # Insert '/' separator after the last positional-only arg
+        if posonlyargs and i == len(posonlyargs) - 1 and i >= start:
+            parts.append("/")
 
     if args.vararg:
         v = f"*{args.vararg.arg}"
@@ -77,9 +90,6 @@ def _build_signature(node) -> str:
         if args.kwarg.annotation:
             k += f": {_unparse_node(args.kwarg.annotation)}"
         parts.append(k)
-
-    if parts and parts[0] in ("self", "cls"):
-        parts = parts[1:]
 
     return ", ".join(parts)
 
@@ -185,13 +195,20 @@ class GitCommitter:
             sys.exit(1)
         return result.stdout.strip()
 
-    def _run_git(self, cmd: list, readme_path: Path, original: str) -> None:
+    def _run_git(
+        self, cmd: list, readme_path: Path, original: str, unstage: bool = False
+    ) -> None:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(
                 f"sync_docs: error: {' '.join(cmd[:2])} failed: {result.stderr.strip()}",
                 file=sys.stderr,
             )
+            if unstage:
+                subprocess.run(
+                    ["git", "restore", "--staged", str(readme_path)],
+                    capture_output=True,
+                )
             readme_path.write_text(original, encoding="utf-8")
             sys.exit(1)
 
@@ -199,7 +216,10 @@ class GitCommitter:
         self, readme_path: Path, original: str, message: str
     ) -> None:
         self._run_git(["git", "add", str(readme_path)], readme_path, original)
-        self._run_git(["git", "commit", "-m", message], readme_path, original)
+        # unstage=True: if commit fails, undo the staging before restoring the file
+        self._run_git(
+            ["git", "commit", "-m", message], readme_path, original, unstage=True
+        )
 
 
 def main() -> None:
