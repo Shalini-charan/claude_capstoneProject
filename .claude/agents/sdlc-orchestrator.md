@@ -180,13 +180,66 @@ Print detected state and ask: **"Resume from Stage N — <Name>? (yes / restart)
 
 ---
 
-## MCP Tool Hooks (stubs — wired in Phase 2)
+## MCP Tool Hooks
 
-When MCP tools are configured, the orchestrator will:
+The `atlassian` and `github` MCP servers are configured in `.mcp.json`. When connected, use these calls at each stage:
 
-- **Stage 1**: call `jira_get_issue(<ticket_id>)` to pull description, acceptance criteria, and labels directly from Jira instead of asking the developer to paste them
-- **Stage 2–4**: call `confluence_create_page(<space_key>, <title>, <content>)` to publish each doc to Confluence automatically
-- **Stage 6**: call `jira_add_comment(<ticket_id>, <review_summary>)` to post the code review summary to the Jira ticket
-- **Stage 8**: call `jira_transition_issue(<ticket_id>, "In Review")` after the PR is created
+### Stage 1 — Pull ticket from Jira
+```
+mcp__atlassian__jira_get_issue(issue_key="<TICKET_ID>")
+```
+Extract: `summary`, `description`, `customfield_10016` (acceptance criteria), `labels`, `priority`.
+Map to FR/NFR/Constraints rows directly. Ask the developer only for gaps not in the ticket.
 
-These hooks are listed here so the orchestrator can be extended without redesign when MCPs are added.
+After `docs/requirements.md` is approved:
+```
+mcp__atlassian__jira_add_comment(
+  issue_key="<TICKET_ID>",
+  comment="Stage 1 complete — requirements captured in docs/requirements.md."
+)
+```
+
+### Stages 2–4 — Publish docs to Confluence
+```
+mcp__atlassian__confluence_create_page(
+  space_key="CLAUDE",
+  title="<doc title>",
+  body="<markdown content of the doc>"
+)
+```
+Call once after each of Stages 2, 3, and 4 to publish `docs/architecture.md`, `docs/design-review.md`, and `docs/impl-plan.md` to Confluence.
+
+### Stage 6 — Post code review summary to Jira
+```
+mcp__atlassian__jira_add_comment(
+  issue_key="<TICKET_ID>",
+  comment="Stage 6 complete — code review findings: <N CRITICAL, N HIGH, N MEDIUM, N LOW>. All CRITICAL/HIGH resolved."
+)
+```
+
+### Stage 8 — Create PR and transition Jira
+```
+mcp__github__create_pull_request(
+  owner="<org>",
+  repo="<repo>",
+  title="<PR title>",
+  body="<content of docs/pr-description.md>",
+  head="feature/<ticket-id>-<slug>",
+  base="main"
+)
+```
+After PR is created:
+```
+mcp__atlassian__jira_transition_issue(issue_key="<TICKET_ID>", transition="In Review")
+mcp__atlassian__jira_add_comment(
+  issue_key="<TICKET_ID>",
+  comment="Stage 8 complete — PR created: <PR_URL>"
+)
+```
+
+### Fallback (MCP not connected)
+If either MCP server is unavailable, fall back to:
+- Stage 1: ask the developer for the feature description
+- Stages 2–4: write docs locally only
+- Stage 6: print findings to terminal only
+- Stage 8: write `docs/pr-description.md` and run `gh pr create` via Bash
