@@ -56,6 +56,7 @@
 | **Responsibility** | Entry point: receives Git push signal, invokes `sync_docs.py`, propagates exit code |
 | **On exit 0** | Push proceeds normally |
 | **On exit 1** | Push is aborted by Git |
+| **Python detection** | Hook tries `python`, then `python3`, then `py` in order; exits 1 with a clear error if none is found on PATH (DD-04) |
 
 ### 2.2 Hook Installer — `install_hook.sh`
 
@@ -78,6 +79,8 @@ The main orchestrator. Contains four internal modules (classes/functions within 
 | **Library** | `ast` (parse tree), `inspect.cleandoc` equivalent via `textwrap.dedent` |
 | **Scope** | Top-level `FunctionDef`, `AsyncFunctionDef`, `ClassDef` only (C-3) |
 | **Format handled** | Google-style docstrings (FR-1) |
+| **File encoding** | Files opened with `encoding='utf-8', errors='replace'`; files with replacement characters emit a warning to stderr (DD-03) |
+| **DocEntry.signature** | Parameter list only, excluding the function name — e.g. `a: int, b: int` for `def add(a: int, b: int) -> int`. Rendered as `` ### `add(a: int, b: int)` `` (DD-06) |
 
 #### 2.3.2 `ReadmeManager`
 
@@ -88,6 +91,7 @@ The main orchestrator. Contains four internal modules (classes/functions within 
 | **Create-if-missing** | Appends `## API Reference\n` + content if heading absent (FR-2, AC-4) |
 | **Section boundary** | Section starts at `## API Reference`, ends at next `## ` heading or EOF |
 | **Library** | `pathlib`, `re` |
+| **Heading constraint** | The heading must be exactly `## API Reference` (case-sensitive, no trailing space or plural). Any variation causes a new duplicate section to be appended (DD-07) |
 
 #### 2.3.3 `ChangeDetector`
 
@@ -105,7 +109,8 @@ The main orchestrator. Contains four internal modules (classes/functions within 
 | **Commit message** | `docs: auto-sync from <short-hash>` |
 | **Short hash** | `git rev-parse --short HEAD` via `subprocess.run` |
 | **Library** | `subprocess`, `sys` |
-| **On git failure** | Writes to `stderr`, raises exception → exit code 1 (FR-5) |
+| **Rollback** | Saves original README content before writing. If `git commit` fails, restores the original content before exiting 1 — prevents permanently dirty working tree (DD-02) |
+| **On git failure** | Restores README, writes error to `stderr`, exits 1 → push aborted (FR-5) |
 
 ---
 
@@ -197,11 +202,16 @@ claude_capStone/
 ## 6. Key Interfaces
 
 ```
+DocEntry = namedtuple('DocEntry', ['name', 'signature', 'docstring'])
+  # name      : str  — function or class name, e.g. "add"
+  # signature : str  — parameter list only, e.g. "a: int, b: int"
+  # docstring : str  — dedented docstring body
+
 DocstringExtractor
   extract(file_path: Path) -> list[DocEntry]
 
 ReadmeManager
-  read_section(readme_path: Path) -> str
+  read_section(readme_path: Path) -> str        # returns "" if section absent
   write_section(readme_path: Path, content: str) -> None
 
 ChangeDetector
@@ -210,6 +220,7 @@ ChangeDetector
 GitCommitter
   get_short_hash() -> str
   stage_and_commit(file_path: Path, message: str) -> None
+  # saves original content before writing; restores on commit failure (DD-02)
 
 main() -> None   # orchestrates all four; called by pre-push hook
 ```
@@ -220,9 +231,25 @@ main() -> None   # orchestrates all four; called by pre-push hook
 
 | Scenario | Behaviour |
 |---|---|
-| No `.py` files found | Write warning to `stderr`; write empty section; exit 0 |
+| No `.py` files found | Write warning to `stderr`; **skip README update entirely**; exit 0 — no commit (DD-05) |
 | `README.md` missing | Create `README.md` with `## API Reference` section; exit 0 |
-| `ast.parse` fails on a file | Log file path to `stderr`; skip file; continue |
+| `ast.parse` fails on a file | Log file path to `stderr`; skip file; continue with remaining files |
+| Non-UTF-8 `.py` file | Open with `errors='replace'`; write warning to `stderr`; continue (DD-03) |
 | `git` not on `PATH` | Write error to `stderr`; exit 1 → push aborted |
-| `git commit` fails | Write stderr output; exit 1 → push aborted |
+| `git commit` fails | Restore original `README.md` content; write error to `stderr`; exit 1 → push aborted (DD-02) |
+| Python not on `PATH` | Hook writes clear error ("python/python3/py not found"); exit 1 → push aborted (DD-04) |
 | Any uncaught exception | Top-level `try/except`; write to `stderr`; exit 1 |
+
+---
+
+## 8. Known Limitations
+
+### KL-1 — Sync commit is not included in the triggering push
+
+When `git push` is invoked, Git determines the set of refs to transmit **before** the pre-push hook runs. If `sync_docs.py` creates a new commit during the hook, that commit is not included in the current push.
+
+**Consequence:** After a successful push that triggered a sync, local `main` will be one commit ahead of the remote. The developer must run `git push` a second time to send the sync commit.
+
+**Accepted trade-off:** The alternative (post-commit hook) would trigger on every commit including the sync commit itself, risking re-entrancy. Pre-push was the explicitly chosen trigger (FR-4). This limitation is acceptable for the capstone scope.
+
+**User guidance:** If the terminal shows "docs: auto-sync from …" during a push, run `git push` once more to send the sync commit to the remote.
