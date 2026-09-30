@@ -8,7 +8,6 @@ import textwrap
 from collections import namedtuple
 from pathlib import Path
 
-# T-02 — DocEntry data type
 DocEntry = namedtuple("DocEntry", ["name", "signature", "docstring"])
 
 
@@ -97,10 +96,6 @@ def _format_entries(entries: list) -> str:
     return "\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# T-02 — DocstringExtractor
-# ---------------------------------------------------------------------------
-
 class DocstringExtractor:
     """Extract top-level Google-style docstrings from a Python source file."""
 
@@ -133,15 +128,11 @@ class DocstringExtractor:
                 DocEntry(
                     name=node.name,
                     signature=_build_signature(node),
-                    docstring=textwrap.dedent(raw).strip(),
+                    docstring=raw.strip(),
                 )
             )
         return entries
 
-
-# ---------------------------------------------------------------------------
-# T-03 — ReadmeManager
-# ---------------------------------------------------------------------------
 
 class ReadmeManager:
     """Read and write the ## API Reference section in README.md."""
@@ -170,20 +161,12 @@ class ReadmeManager:
         readme_path.write_text(text, encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# T-04 — ChangeDetector
-# ---------------------------------------------------------------------------
-
 class ChangeDetector:
     """Detect whether the API Reference content has changed."""
 
     def has_changed(self, old: str, new: str) -> bool:
         return old.strip() != new.strip()
 
-
-# ---------------------------------------------------------------------------
-# T-05 — GitCommitter
-# ---------------------------------------------------------------------------
 
 class GitCommitter:
     """Stage README.md and create a sync commit; rollback on failure."""
@@ -202,35 +185,22 @@ class GitCommitter:
             sys.exit(1)
         return result.stdout.strip()
 
-    def stage_and_commit(self, readme_path: Path, message: str) -> None:
-        original = readme_path.read_text(encoding="utf-8")
-
-        add = subprocess.run(
-            ["git", "add", str(readme_path)], capture_output=True, text=True
-        )
-        if add.returncode != 0:
+    def _run_git(self, cmd: list, readme_path: Path, original: str) -> None:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
             print(
-                f"sync_docs: error: git add failed: {add.stderr.strip()}",
+                f"sync_docs: error: {' '.join(cmd[:2])} failed: {result.stderr.strip()}",
                 file=sys.stderr,
             )
             readme_path.write_text(original, encoding="utf-8")
             sys.exit(1)
 
-        commit = subprocess.run(
-            ["git", "commit", "-m", message], capture_output=True, text=True
-        )
-        if commit.returncode != 0:
-            print(
-                f"sync_docs: error: git commit failed: {commit.stderr.strip()}",
-                file=sys.stderr,
-            )
-            readme_path.write_text(original, encoding="utf-8")
-            sys.exit(1)
+    def stage_and_commit(
+        self, readme_path: Path, original: str, message: str
+    ) -> None:
+        self._run_git(["git", "add", str(readme_path)], readme_path, original)
+        self._run_git(["git", "commit", "-m", message], readme_path, original)
 
-
-# ---------------------------------------------------------------------------
-# T-06 — main() orchestrator
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     try:
@@ -245,7 +215,7 @@ def main() -> None:
             sys.exit(0)
 
         extractor = DocstringExtractor()
-        all_entries: list = []
+        all_entries: list[DocEntry] = []
         for f in py_files:
             all_entries.extend(extractor.extract(f))
 
@@ -258,12 +228,14 @@ def main() -> None:
             print("sync_docs: no docstring changes detected", file=sys.stderr)
             sys.exit(0)
 
+        # Capture the full README text BEFORE writing — used for rollback.
+        original_readme = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
         manager.write_section(readme_path, new_content)
 
         committer = GitCommitter()
         short_hash = committer.get_short_hash()
         committer.stage_and_commit(
-            readme_path, f"docs: auto-sync from {short_hash}"
+            readme_path, original_readme, f"docs: auto-sync from {short_hash}"
         )
 
         print("sync_docs: README.md updated and committed", file=sys.stderr)
