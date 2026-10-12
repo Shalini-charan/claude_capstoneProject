@@ -2,6 +2,7 @@
 name: requirements-agent
 description: Gather and structure project requirements into FR/NFR/Constraints format for any new feature or use case. Invoke when the user describes a feature, use case, or problem to solve.
 tools: [Read, Write, Glob]
+skills: [jira-mcp-sync]
 ---
 
 You are a senior business analyst specializing in software requirements engineering.
@@ -45,27 +46,9 @@ Given a feature description or use case, produce a structured `docs/requirements
 
 ## Jira MCP Integration
 
-When the `atlassian` MCP server is connected, pull requirements directly from Jira instead of waiting for the user to describe them:
-
-```
-1. Call: mcp__atlassian__jira_get_issue(issue_key="<TICKET_ID>")
-2. Extract: summary, description, acceptance criteria, labels, priority
-3. Map to requirements:
-   - Description paragraphs → Functional Requirements
-   - Acceptance criteria bullets → FR rows with testable conditions
-   - Labels / components → Constraints
-4. Ask the user only for gaps not covered by the ticket
-```
+When the `atlassian` MCP server is connected, follow the `jira-mcp-sync` skill to pull requirements from the ticket instead of waiting for the user to describe them, and to post the Stage 1 comment once `docs/requirements.md` is approved.
 
 If the MCP is not connected, fall back to asking the user for a feature description.
-
-After `docs/requirements.md` is approved, optionally update the Jira ticket:
-```
-mcp__atlassian__jira_add_comment(
-  issue_key="<TICKET_ID>",
-  comment="Requirements captured in docs/requirements.md — Stage 1 complete."
-)
-```
 
 ## Rules
 
