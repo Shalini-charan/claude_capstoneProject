@@ -52,9 +52,9 @@ Then ask: **"Provide a Jira ticket ID (e.g. CLAUDE-1) or describe the feature to
 Run these checks once and report any failure before starting:
 
 1. `gh auth status` — must be logged in, otherwise Stage 8 cannot create the PR.
-2. `git remote get-url origin` — must exist, and `git ls-remote --heads origin main` must show a `main` branch.
-3. `git status --short` — if there are uncommitted changes, list them and ask whether they belong to this ticket. Do not carry another ticket's changes into this PR.
-4. `gh pr list --head <current-branch>` — if the current branch already has an open PR, do not reuse it; Stage 5 will branch from `origin/main`.
+2. `git remote get-url origin` — must exist.
+3. Record the current branch as `<base-branch>`. The feature branch and PR are based on it, not on `main`, because `main` may not contain the code this ticket builds on. Confirm `git status -sb` shows `<base-branch>` is not ahead of `origin/<base-branch>`; if it is, ask the developer to push it first so the PR diff shows only this ticket.
+4. `git status --short` — if there are uncommitted changes, list them and ask whether they belong to this ticket. Do not carry another ticket's changes into this PR.
 
 ## Docs directory
 
@@ -108,7 +108,7 @@ Store all SDLC documents for a ticket in `docs/<ticket-id-lowercase-no-dash>/` (
 
 ### Stage 5 — Implementation
 - **Input**: `<docs-dir>/impl-plan.md`
-- **Action**: First create the feature branch from `origin/main`: `git fetch origin && git checkout -b feature/<ticket-id>-<slug> origin/main`. Uncommitted changes from other tickets would be carried onto the new branch, so if the pre-flight check found any, stop and ask the developer before branching. Then implement each task in dependency order. For each task:
+- **Action**: First create the feature branch from `<base-branch>`: `git checkout -b feature/<ticket-id>-<slug>`. Uncommitted changes from other tickets would be carried onto the new branch, so if the pre-flight check found any, stop and ask the developer before branching. Then implement each task in dependency order. For each task:
   1. Announce: `  T-NN: <task title>`
   2. Write/edit the file(s) listed in the task
   3. Run a quick sanity check (e.g. `python -c "import src.sync_docs"`) if applicable
@@ -137,7 +137,7 @@ Store all SDLC documents for a ticket in `docs/<ticket-id-lowercase-no-dash>/` (
   1. Invoke `pr-agent` to produce `<docs-dir>/pr-description.md`
   2. Commit: stage only this ticket's files (`src/`, `tests/`, `<docs-dir>/`) by name — never `git add -A` — and commit with message `feat: <summary> (<TICKET_ID>)`
   3. Push the feature branch created in Stage 5: `git push -u origin feature/<ticket-id>-<slug>`
-  4. Create the PR: `gh pr create --base main --head feature/<ticket-id>-<slug> --title "<title>" --body-file <docs-dir>/pr-description.md`
+  4. Create the PR: `gh pr create --base <base-branch> --head feature/<ticket-id>-<slug> --title "<title>" --body-file <docs-dir>/pr-description.md`
   5. Verify with `gh pr view --json url,state` and print the URL
 - **Output**: PR URL
 - **Quality gate**: NO — print the PR URL and declare the pipeline complete
@@ -223,7 +223,7 @@ mcp__github__create_pull_request(
   title="<PR title>",
   body="<content of docs/pr-description.md>",
   head="feature/<ticket-id>-<slug>",
-  base="main"
+  base="<base-branch>"
 )
 ```
 After the PR is created, update Jira as described in the `jira-mcp-sync` skill.
