@@ -16,9 +16,9 @@ Stage 1 → requirements-agent   → docs/requirements.md
 Stage 2 → architecture-agent   → docs/architecture.md
 Stage 3 → design-review-agent  → docs/design-review.md
 Stage 4 → impl-plan-agent      → docs/impl-plan.md
-Stage 5 → [implement]          → src/
+Stage 5 → implementation-agent → src/
 Stage 6 → code-review-agent    → findings report
-Stage 7 → [verify]             → tests/  +  test run
+Stage 7 → verify-agent         → tests/  +  test run
 Stage 8 → pr-agent             → docs/pr-description.md + GitHub PR
 ```
 
@@ -106,28 +106,28 @@ Store all SDLC documents for a ticket in `docs/<ticket-id-lowercase-no-dash>/` (
 - **Output**: `docs/impl-plan.md` with phased task list and parallel groups
 - **Quality gate**: YES — pause for approval
 
-### Stage 5 — Implementation
+### Stage 5 — Implementation (`implementation-agent`)
 - **Input**: `<docs-dir>/impl-plan.md`
-- **Action**: First create the feature branch from `<base-branch>`: `git checkout -b feature/<ticket-id>-<slug>`. Uncommitted changes from other tickets would be carried onto the new branch, so if the pre-flight check found any, stop and ask the developer before branching. Then implement each task in dependency order. For each task:
-  1. Announce: `  T-NN: <task title>`
-  2. Write/edit the file(s) listed in the task
-  3. Run a quick sanity check (e.g. `python -c "import src.sync_docs"`) if applicable
-  4. Move to the next task
+- **Action**:
+  1. Create the feature branch from `<base-branch>` yourself: `git checkout -b feature/<ticket-id>-<slug>`. Uncommitted changes from other tickets would be carried onto the new branch, so if the pre-flight check found any, stop and ask the developer before branching.
+  2. Invoke `implementation-agent` with `<docs-dir>` and the branch name. It implements the plan's tasks in dependency order and runs a sanity check after each. It does not write tests, commit or push. Do not write the source code yourself.
+  3. Read its report. If it reports a failed task or a plan/code conflict, stop and report to the developer.
 - **Output**: all `src/` files listed in the plan
 - **Quality gate**: NO — proceed automatically; stop and report if any task fails
 
 ### Stage 6 — Code Review (`code-review-agent`)
 - **Input**: all `src/` files
 - **Output**: findings report printed to terminal
-- **Action**: If any CRITICAL or HIGH findings exist, apply fixes before proceeding. Re-run the review if fixes were significant.
+- **Action**: If any CRITICAL or HIGH findings exist, send them to `implementation-agent` to apply fixes before proceeding. Re-run the review if fixes were significant.
 - **Quality gate**: NO — proceed automatically after fixes applied
 
-### Stage 7 — Verify
-- **Input**: `tests/` directory, `src/` files
+### Stage 7 — Verify (`verify-agent`)
+- **Input**: `<docs-dir>/requirements.md`, `<docs-dir>/impl-plan.md`, `src/` files, `tests/` directory
 - **Action**:
-  1. Write `tests/test_<module>.py` covering all components (unit + integration)
-  2. Run: `python -m unittest discover -s tests -v`
-  3. All tests must pass before proceeding; fix failures before Stage 8
+  1. Invoke `verify-agent` with `<docs-dir>`. It writes the unit and integration tests (extending existing test files), runs `python -m unittest discover -s tests -v`, and reports the real totals.
+  2. If it reports a source bug, send the finding to `implementation-agent` to fix, then re-invoke `verify-agent`. Do not edit source or tests yourself.
+  3. All tests must pass (skips only for documented waivers) before proceeding to Stage 8.
+  4. Confirm the totals by running the suite once yourself before moving on.
 - **Output**: passing test run output
 - **Quality gate**: NO — proceed automatically
 
@@ -190,7 +190,8 @@ Print detected state and ask: **"Resume from Stage N — <Name>? (yes / restart)
 | Error | Action |
 |---|---|
 | Specialist agent produces empty output | Re-invoke once with explicit instruction; if still empty, stop and report |
-| Tests fail after Stage 7 | Fix failures, re-run; do not proceed to Stage 8 with failing tests |
+| Tests fail after Stage 7 | Route source bugs to `implementation-agent` and re-run `verify-agent`; do not proceed to Stage 8 with failing tests |
+| Code review CRITICAL/HIGH findings (Stage 6) | Send the findings to `implementation-agent` to fix, then re-run `code-review-agent` |
 | `git` or `gh` command fails | Report the exact error and ask the developer how to proceed |
 | Any unhandled exception | Print the stage name, error message, and last successful stage; suggest resuming |
 
