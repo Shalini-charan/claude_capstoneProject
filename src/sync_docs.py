@@ -1,5 +1,6 @@
 """Sync README.md ## API Reference section from Python docstrings on push."""
 
+import argparse
 import ast
 import re
 import subprocess
@@ -159,9 +160,13 @@ class ReadmeManager:
         match = self._SECTION_RE.search(text)
         return match.group(1) if match else ""
 
+    def render_section(self, content: str) -> str:
+        """Return the full section text (heading plus content) written to README."""
+        return f"{self._HEADING}\n{content}"
+
     def write_section(self, readme_path: Path, content: str) -> None:
         text = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
-        new_section = f"{self._HEADING}\n{content}"
+        new_section = self.render_section(content)
         if self._SECTION_RE.search(text):
             text = self._SECTION_RE.sub(lambda _m: new_section, text, count=1)
         else:
@@ -222,10 +227,54 @@ class GitCommitter:
         )
 
 
-def main() -> None:
+def parse_args(argv=None) -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Args:
+        argv: Argument list to parse; defaults to sys.argv[1:] when None.
+
+    Returns:
+        The parsed namespace with a boolean ``dry_run`` attribute.
+    """
+    parser = argparse.ArgumentParser(
+        prog="sync_docs.py",
+        description="Sync the README.md ## API Reference section from docstrings.",
+        epilog=(
+            "The scan covers *.py files in the current directory (non-recursive). "
+            "--dry-run does not validate git."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the README API Reference update without writing or committing.",
+    )
+    return parser.parse_args(argv)
+
+
+def _write_stdout_utf8(text: str) -> None:
+    """Write text to stdout as UTF-8 regardless of the console code page."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    else:
+        buffer = getattr(sys.stdout, "buffer", None)
+        if buffer is not None:
+            if hasattr(sys.stdout, "flush"):
+                sys.stdout.flush()
+            buffer.write(text.encode("utf-8"))
+            buffer.flush()
+        else:
+            sys.stdout.write(text)
+
+
+def main(argv=None) -> None:
     try:
+        args = parse_args(argv)
         readme_path = Path("README.md")
-        py_files = sorted(Path(".").glob("*.py"))
+        source_dir = Path(".")
+        py_files = sorted(source_dir.glob("*.py"))
 
         if not py_files:
             print(
@@ -243,6 +292,14 @@ def main() -> None:
 
         manager = ReadmeManager()
         old_content = manager.read_section(readme_path)
+
+        if args.dry_run:
+            # Preview only: no README write, no GitCommitter, no git subprocess.
+            if not ChangeDetector().has_changed(old_content, new_content):
+                print("README.md is up to date")
+                sys.exit(0)
+            _write_stdout_utf8(manager.render_section(new_content))
+            sys.exit(0)
 
         if not ChangeDetector().has_changed(old_content, new_content):
             print("sync_docs: no docstring changes detected", file=sys.stderr)
