@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pre-push hook: syncs README.md ## API Reference from Python docstrings.
+# Installed by install_hook.sh — edit hooks/pre-push.template, not this file.
+
+SCRIPT="src/sync_docs.py"
+
+# Detect Python executable: try python, then python3, then py (Windows launcher)
+PYTHON_CMD=""
+for cmd in python python3 py; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+        PYTHON_CMD="$cmd"
+        break
+    fi
+done
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "sync_docs: error: no Python interpreter found (tried python, python3, py)" >&2
+    echo "sync_docs: install Python 3.8+ and ensure it is on PATH, then re-push" >&2
+    exit 1
+fi
+
+"$PYTHON_CMD" "$SCRIPT"
+exit $?

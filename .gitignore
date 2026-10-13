@@ -1,0 +1,6 @@
+src/__pycache__/
+tests/__pycache__/
+.env.local
+scripts/*.local.*
+.mcp.json
+
