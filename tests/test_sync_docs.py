@@ -1,6 +1,9 @@
 """Verification suite for sync_docs.py — T-09 through T-13."""
 
 import ast
+import contextlib
+import hashlib
+import io
 import os
 import shutil
 import subprocess
@@ -22,6 +25,7 @@ from sync_docs import (
     _build_signature,
     _format_entries,
     main,
+    parse_args,
 )
 
 # ---------------------------------------------------------------------------
@@ -423,7 +427,7 @@ class TestIntegration(unittest.TestCase):
         commits_before = len(self._log())
 
         with self.assertRaises(SystemExit) as ctx:
-            main()
+            main([])
         self.assertEqual(ctx.exception.code, 0)
 
         readme = (self.tmpdir / "README.md").read_text(encoding="utf-8")
@@ -440,11 +444,11 @@ class TestIntegration(unittest.TestCase):
     def test_second_run_no_change_makes_no_commit(self):
         self._commit_py(GOOGLE_STYLE_PY)
         with self.assertRaises(SystemExit):
-            main()
+            main([])
         commits_after_first = len(self._log())
 
         with self.assertRaises(SystemExit) as ctx:
-            main()
+            main([])
         self.assertEqual(ctx.exception.code, 0)
         self.assertEqual(len(self._log()), commits_after_first)
 
@@ -453,7 +457,7 @@ class TestIntegration(unittest.TestCase):
     def test_updated_docstring_triggers_new_sync_commit(self):
         self._commit_py(GOOGLE_STYLE_PY)
         with self.assertRaises(SystemExit):
-            main()
+            main([])
         commits_after_first_sync = len(self._log())
 
         updated = GOOGLE_STYLE_PY.replace(
@@ -462,7 +466,7 @@ class TestIntegration(unittest.TestCase):
         self._commit_py(updated)
 
         with self.assertRaises(SystemExit) as ctx:
-            main()
+            main([])
         self.assertEqual(ctx.exception.code, 0)
 
         # One code commit + one sync commit on top of first sync
@@ -477,7 +481,7 @@ class TestIntegration(unittest.TestCase):
     def test_no_py_files_exits_0_no_commit(self):
         commits_before = len(self._log())
         with self.assertRaises(SystemExit) as ctx:
-            main()
+            main([])
         self.assertEqual(ctx.exception.code, 0)
         self.assertEqual(len(self._log()), commits_before)
         self.assertFalse(any("auto-sync" in l for l in self._log()))
@@ -489,10 +493,307 @@ class TestIntegration(unittest.TestCase):
         self._commit_py(GOOGLE_STYLE_PY)
 
         with self.assertRaises(SystemExit) as ctx:
-            main()
+            main([])
         self.assertEqual(ctx.exception.code, 0)
         self.assertTrue((self.tmpdir / "README.md").exists())
         self.assertIn("## API Reference", (self.tmpdir / "README.md").read_text())
+
+
+class TestDryRun(unittest.TestCase):
+    """CLAUDE-3: --dry-run previews the README update without side effects."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.orig_dir = os.getcwd()
+        os.chdir(self.tmpdir)
+        self.readme = self.tmpdir / "README.md"
+        self.readme.write_text("# Test Repo\n", encoding="utf-8")
+
+    def tearDown(self):
+        os.chdir(self.orig_dir)
+        shutil.rmtree(str(self.tmpdir), ignore_errors=True)
+
+    def _write_py(self, content=GOOGLE_STYLE_PY, name="sample.py"):
+        (self.tmpdir / name).write_text(content, encoding="utf-8")
+
+    def _run(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as ctx:
+                main(argv)
+        return ctx.exception.code, out.getvalue(), err.getvalue()
+
+    def _expected_section(self):
+        entries = DocstringExtractor().extract(self.tmpdir / "sample.py")
+        return ReadmeManager().render_section(_format_entries(entries))
+
+    def _readme_bytes(self):
+        return self.readme.read_bytes()
+
+    def _fake_git_ok(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0, "abc1234\n", "")
+
+    # --- parse_args / --help (FR-1, FR-10, NFR-7) ---
+
+    def test_parse_args_defaults_and_flag(self):
+        self.assertFalse(parse_args([]).dry_run)
+        self.assertTrue(parse_args(["--dry-run"]).dry_run)
+
+    def test_help_lists_dry_run_on_one_line(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit) as ctx:
+                parse_args(["--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        lines = [l for l in out.getvalue().splitlines() if "--dry-run" in l]
+        self.assertTrue(lines)
+        # The option and its description share one rendered line at a wide width.
+        wide = io.StringIO()
+        with patch.dict(os.environ, {"COLUMNS": "200"}):
+            with contextlib.redirect_stdout(wide):
+                with self.assertRaises(SystemExit):
+                    parse_args(["-h"])
+        opt_lines = [
+            l for l in wide.getvalue().splitlines()
+            if l.strip().startswith("--dry-run")
+        ]
+        self.assertEqual(len(opt_lines), 1)
+        self.assertIn("Preview", opt_lines[0])
+        description = opt_lines[0].strip()[len("--dry-run"):].strip()
+        self.assertLessEqual(len(description), 100)
+
+    def test_write_stdout_utf8_buffer_fallback(self):
+        import sync_docs
+
+        class BufOnly:
+            def __init__(self):
+                self.buffer = io.BytesIO()
+
+        fake = BufOnly()
+        with patch.object(sync_docs.sys, "stdout", fake):
+            sync_docs._write_stdout_utf8("a → b")
+        self.assertEqual(fake.buffer.getvalue(), "a → b".encode("utf-8"))
+
+    def test_write_stdout_utf8_plain_write_fallback(self):
+        import sync_docs
+
+        class WriteOnly:
+            def __init__(self):
+                self.text = ""
+
+            def write(self, value):
+                self.text += value
+
+        fake = WriteOnly()
+        with patch.object(sync_docs.sys, "stdout", fake):
+            sync_docs._write_stdout_utf8("plain")
+        self.assertEqual(fake.text, "plain")
+
+    def test_unknown_flag_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                parse_args(["--bogus"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    # --- changed section (AC1, AC2) ---
+
+    def test_dry_run_prints_section_and_leaves_readme_untouched(self):
+        self._write_py()
+        before = self._readme_bytes()
+        mtime = self.readme.stat().st_mtime_ns
+        with patch("sync_docs.subprocess.run") as run:
+            code, out, err = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, self._expected_section())
+        self.assertEqual(self._readme_bytes(), before)
+        self.assertEqual(self.readme.stat().st_mtime_ns, mtime)
+        run.assert_not_called()
+
+    def test_dry_run_does_not_construct_git_committer(self):
+        self._write_py()
+        with patch("sync_docs.GitCommitter") as gc:
+            self._run(["--dry-run"])
+        gc.assert_not_called()
+
+    # --- up to date (AC3) ---
+
+    def test_dry_run_up_to_date_message(self):
+        self._write_py()
+        with patch("sync_docs.subprocess.run") as run:
+            self._fake_git_ok(run)
+            self._run([])
+        before = self._readme_bytes()
+        with patch("sync_docs.subprocess.run") as run:
+            code, out, err = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("README.md is up to date", out)
+        self.assertNotIn("README.md is up to date", err)
+        self.assertEqual(self._readme_bytes(), before)
+        run.assert_not_called()
+
+    # --- no dry-run: unchanged behaviour (AC6) ---
+
+    def test_main_empty_argv_real_run_commits(self):
+        self._write_py()
+        with patch("sync_docs.subprocess.run") as run:
+            self._fake_git_ok(run)
+            code, out, err = self._run([])
+        self.assertEqual(code, 0)
+        cmds = [c.args[0][:2] for c in run.call_args_list]
+        self.assertEqual(
+            cmds, [["git", "rev-parse"], ["git", "add"], ["git", "commit"]]
+        )
+        self.assertIn("README.md updated and committed", err)
+        self.assertEqual(out, "")
+        self.assertIn("## API Reference", self.readme.read_text(encoding="utf-8"))
+
+    # --- missing inputs (FR-12, FR-13, FR-14) ---
+
+    def test_dry_run_missing_readme_not_created(self):
+        self._write_py()
+        self.readme.unlink()
+        code, out, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, self._expected_section())
+        self.assertFalse(self.readme.exists())
+
+    def test_dry_run_readme_without_section(self):
+        self._write_py()
+        before = self._readme_bytes()
+        code, out, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("## API Reference\n"))
+        self.assertEqual(self._readme_bytes(), before)
+
+    def test_dry_run_no_py_files(self):
+        before = self._readme_bytes()
+        with patch("sync_docs.subprocess.run") as run:
+            code, out, err = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("no .py files", err)
+        self.assertEqual(self._readme_bytes(), before)
+        run.assert_not_called()
+
+    # --- warnings and errors (FR-15, FR-17, FR-18) ---
+
+    def test_dry_run_warnings_on_stderr_only(self):
+        self._write_py()
+        self._write_py("def broken(:\n", "bad.py")
+        (self.tmpdir / "latin.py").write_bytes(
+            b'def f():\n    """Doc \xff\xfe."""\n'
+        )
+        code, out, err = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("parse error", err)
+        self.assertIn("non-UTF-8", err)
+        self.assertNotIn("sync_docs:", out)
+        self.assertIn("## API Reference", out)
+
+    def test_dry_run_unexpected_error_exits_1(self):
+        self._write_py()
+        before = self._readme_bytes()
+        with patch.object(
+            DocstringExtractor, "extract", side_effect=RuntimeError("boom")
+        ):
+            code, out, err = self._run(["--dry-run"])
+        self.assertEqual(code, 1)
+        self.assertIn("unexpected error", err)
+        self.assertEqual(self._readme_bytes(), before)
+
+    # --- KL-4 pinned edge cases ---
+
+    def test_dry_run_no_docstrings_missing_readme_reports_up_to_date(self):
+        self._write_py("x = 1\n")
+        self.readme.unlink()
+        code, out, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("README.md is up to date", out)
+        self.assertFalse(self.readme.exists())
+
+    def test_dry_run_no_docstrings_sectionless_readme(self):
+        self._write_py("x = 1\n")
+        code, out, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("README.md is up to date", out)
+
+    def test_dry_run_docstrings_removed_prints_empty_heading(self):
+        self._write_py()
+        with patch("sync_docs.subprocess.run") as run:
+            self._fake_git_ok(run)
+            self._run([])
+        self._write_py("x = 1\n")
+        code, out, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "## API Reference\n")
+
+    # --- preview equals real run (NFR-2, RISK-07) ---
+
+    def test_preview_equals_real_run_section(self):
+        self._write_py()
+        _, preview, _ = self._run(["--dry-run"])
+        with patch("sync_docs.subprocess.run") as run:
+            self._fake_git_ok(run)
+            self._run([])
+        written = ReadmeManager().read_section(self.readme)
+        self.assertEqual(
+            preview.replace("\r\n", "\n"),
+            "## API Reference\n" + written.replace("\r\n", "\n"),
+        )
+
+    # --- UTF-8 stdout (RISK-01) ---
+
+    def _dry_run_subprocess(self):
+        script = str(Path(__file__).parent.parent / "src" / "sync_docs.py")
+        env = dict(os.environ, PYTHONIOENCODING="cp1252")
+        return subprocess.run(
+            [sys.executable, script, "--dry-run"],
+            cwd=self.tmpdir, capture_output=True, env=env,
+        )
+
+    def test_dry_run_utf8_stdout_under_cp1252(self):
+        self._write_py(
+            'def f():\n    """Arrow → and CJK 中文."""\n'
+        )
+        proc = self._dry_run_subprocess()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = proc.stdout.decode("utf-8")
+        self.assertIn("→", text)
+        self.assertIn("中文", text)
+
+    def test_dry_run_non_utf8_source_under_cp1252(self):
+        (self.tmpdir / "latin.py").write_bytes(
+            b'def f():\n    """Doc \xff\xfe."""\n'
+        )
+        proc = self._dry_run_subprocess()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(b"non-UTF-8", proc.stderr)
+        self.assertIn("## API Reference", proc.stdout.decode("utf-8"))
+
+    # --- git state untouched (NFR-1) ---
+
+    def test_dry_run_leaves_git_state_untouched(self):
+        _init_git_repo(self.tmpdir)
+        self._write_py()
+
+        def git(*cmd):
+            return subprocess.run(
+                ["git", *cmd], cwd=self.tmpdir, capture_output=True, text=True
+            ).stdout
+
+        before = (git("status", "--porcelain"), git("rev-parse", "HEAD"),
+                  hashlib.sha256(self._readme_bytes()).hexdigest())
+        code, _, _ = self._run(["--dry-run"])
+        self.assertEqual(code, 0)
+        after = (git("status", "--porcelain"), git("rev-parse", "HEAD"),
+                 hashlib.sha256(self._readme_bytes()).hexdigest())
+        self.assertEqual(before, after)
+
+    # --- FR-9 placeholder ---
+
+    @unittest.skip("FR-9: needs CLAUDE-2")
+    def test_dry_run_with_src_dir(self):
+        """Dry run combined with --src-dir scans that directory (owned by CLAUDE-2)."""
 
 
 if __name__ == "__main__":
