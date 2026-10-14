@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic SDLC Pipeline — Project Overview</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --muted:#5b6475; --line:#e2e5ee; --accent:#3b5bdb; --gate:#e8590c; --ok:#2b8a3e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.55 -apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#1d2433; color:#fff; padding:32px 24px 0; }
+  header h1 { margin:0 0 6px; font-size:28px; }
+  header p { margin:0 0 20px; color:#c5cbe0; max-width:820px; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; max-width:1000px; margin:0 auto; }
+  .head-inner { max-width:1000px; margin:0 auto; }
+  nav button { background:transparent; color:#c5cbe0; border:0; border-bottom:3px solid transparent; padding:10px 16px; font:inherit; font-weight:600; cursor:pointer; }
+  nav button:hover { color:#fff; }
+  nav button.active { color:#fff; border-bottom-color:var(--accent); }
+  main { max-width:1000px; margin:0 auto; padding:24px; }
+  .tab { display:none; }
+  .tab.active { display:block; }
+  h2 { margin:32px 0 12px; font-size:21px; }
+  h2:first-child { margin-top:0; }
+  .flow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .flow span { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:13px; }
+  .flow span.gate { border-color:var(--gate); }
+  .flow i { color:var(--muted); font-style:normal; }
+  .legend { color:var(--muted); font-size:13px; margin-top:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px; margin:16px 0; }
+  .card h3 { margin:0 0 4px; font-size:18px; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; background:#e7ecff; color:var(--accent); margin-right:6px; }
+  .badge.gate { background:#fff0e5; color:var(--gate); }
+  .badge.auto { background:#e6f6ec; color:var(--ok); }
+  .desc { color:var(--muted); margin:6px 0 14px; }
+  dl { display:grid; grid-template-columns:110px 1fr; gap:8px 14px; margin:0; }
+  dt { font-weight:600; color:var(--muted); }
+  dd { margin:0; }
+  code { background:#eef0f6; padding:1px 5px; border-radius:4px; font-size:13px; }
+  pre { background:#1d2433; color:#e6e9f5; padding:14px 16px; border-radius:8px; overflow:auto; font-size:13px; line-height:1.5; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; font-size:14px; }
+  th { background:#eef0f6; }
+  tr:last-child td { border-bottom:none; }
+  ul, ol { margin:4px 0; padding-left:20px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+  .grid .card { margin:0; }
+  .step { border-left:3px solid var(--accent); padding:2px 0 2px 14px; margin:14px 0; }
+  .step.gate { border-left-color:var(--gate); }
+  .step h4 { margin:0 0 2px; font-size:15px; }
+  .note { background:#fff8e6; border:1px solid #f1d98a; border-radius:8px; padding:12px 14px; margin:16px 0; }
+  footer { text-align:center; color:var(--muted); font-size:13px; padding:30px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="head-inner">
+    <h1>Agentic SDLC Pipeline — Project Overview</h1>
+    <p>The <code>claude_capStone</code> project: a set of Claude Code agents that take a Jira ticket (or a feature description) and drive it through requirements, design, implementation, review, testing and a pull request, with a human approving at the key gates. Start it with <code>/run-orchestrator</code>.</p>
+  </div>
+  <nav id="tabs" role="tablist">
+    <button data-tab="overview" class="active">Project overview</button>
+    <button data-tab="architecture">Architecture</button>
+    <button data-tab="agents">Agents</button>
+    <button data-tab="configuration">Configuration</button>
+    <button data-tab="communication">Communication</button>
+    <button data-tab="walkthrough">Walkthrough</button>
+    <button data-tab="conclusion">Conclusion</button>
+  </nav>
+</header>
+<main>
+
+<!-- ============ PROJECT OVERVIEW ============ -->
+<section class="tab active" id="overview">
+  <h2>What this project is</h2>
+  <p>A capstone project that automates the software development life cycle (SDLC) with Claude Code agents. One prompt, such as <code>/run-orchestrator CLAUDE-4</code>, runs a ticket through eight stages. Each stage is done by a specialist agent, and a developer approves the work at three gates before the pipeline continues.</p>
+
+  <h2>Goals</h2>
+  <ul>
+    <li>Turn a Jira ticket into a reviewed pull request with a traceable paper trail of documents.</li>
+    <li>Keep a human in the loop: nothing past requirements, design review or the implementation plan proceeds without approval.</li>
+    <li>Keep roles separate: the agent that writes code does not write the tests, and the agent that writes tests never edits source to make them pass.</li>
+    <li>Report results exactly as observed, never a pass that was not run.</li>
+  </ul>
+
+  <h2>Pipeline at a glance</h2>
+  <div class="flow">
+    <span class="gate">1 Requirements</span><i>→</i>
+    <span>2 Architecture</span><i>→</i>
+    <span class="gate">3 Design Review</span><i>→</i>
+    <span class="gate">4 Impl Plan</span><i>→</i>
+    <span>5 Implementation</span><i>→</i>
+    <span>6 Code Review</span><i>→</i>
+    <span>7 Verify</span><i>→</i>
+    <span>8 Pull Request</span>
+  </div>
+  <p class="legend">Orange outline = approval gate (the pipeline pauses until the developer approves). Open HIGH or CRITICAL design risks block Stage 4.</p>
+
+  <h2>Stage summary</h2>
+  <table>
+    <tr><th>#</th><th>Agent</th><th>Reads</th><th>Produces</th><th>Gate</th></tr>
+    <tr><td>1</td><td><code>requirements-agent</code></td><td>Jira ticket / description</td><td><code>requirements.md</code></td><td>Yes</td></tr>
+    <tr><td>2</td><td><code>architecture-agent</code></td><td>requirements</td><td><code>architecture.md</code></td><td>No</td></tr>
+    <tr><td>3</td><td><code>design-review-agent</code></td><td>architecture, requirements</td><td><code>design-review.md</code></td><td>Yes</td></tr>
+    <tr><td>4</td><td><code>impl-plan-agent</code></td><td>architecture, design review</td><td><code>impl-plan.md</code></td><td>Yes</td></tr>
+    <tr><td>5</td><td><code>implementation-agent</code></td><td>implementation plan</td><td>files under <code>src/</code></td><td>No</td></tr>
+    <tr><td>6</td><td><code>code-review-agent</code></td><td>source files</td><td>findings report</td><td>No</td></tr>
+    <tr><td>7</td><td><code>verify-agent</code></td><td>requirements, plan, source</td><td><code>tests/test_&lt;module&gt;.py</code> and a real test run</td><td>No</td></tr>
+    <tr><td>8</td><td><code>pr-agent</code></td><td>all SDLC docs, git log</td><td><code>pr-description.md</code> and a GitHub PR</td><td>No</td></tr>
+  </table>
+
+  <h2>Repository layout</h2>
+<pre>claude_capStone/
+├── .claude/
+│   ├── agents/      9 agent definitions (orchestrator + 8 specialists)
+│   ├── commands/    slash commands (/run-orchestrator, /gather-requirements, /design-arch, /review-code)
+│   ├── skills/      code-review-checklist, jira-mcp-sync, pr-description-template
+│   ├── rules/       doc-frontmatter, git-workflow, sdlc-pipeline, security
+│   ├── hooks/       user_prompt_hook.py, guard_tools_hook.py, run_tests_hook.py
+│   └── settings.json
+├── docs/&lt;ticket-id&gt;/   per-ticket documents (claude1, claude3, claude4)
+├── src/             sync_docs.py, slugify.py
+├── tests/           test_sync_docs.py, test_slugify.py
+├── hooks/           pre-push.template (installed by install_hook.sh)
+├── scripts/         setup-mcp-env.ps1 / .sh
+└── project-overview.html</pre>
+
+  <h2>Tickets delivered so far</h2>
+  <table>
+    <tr><th>Ticket</th><th>Documents</th></tr>
+    <tr><td>CLAUDE-1</td><td><code>docs/claude1/</code></td></tr>
+    <tr><td>CLAUDE-3</td><td><code>docs/claude3/</code></td></tr>
+    <tr><td>CLAUDE-4 — <code>slugify</code> utility</td><td><code>docs/claude4/</code>, <code>src/slugify.py</code>, <code>tests/test_slugify.py</code>, PR #5</td></tr>
+  </table>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section class="tab" id="architecture">
+  <h2>How the system is put together</h2>
+  <p>The architecture is an <strong>orchestrator plus specialists</strong> pattern. A master agent coordinates; it does not write source code or tests itself. Specialists have narrow roles and a restricted tool list, and they exchange work through documents on disk.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Orchestration layer</h3>
+      <p class="desc"><code>sdlc-orchestrator</code> plus the <code>/run-orchestrator</code> command.</p>
+      <ul>
+        <li>Prints the 8-stage status board.</li>
+        <li>Invokes each specialist in order.</li>
+        <li>Enforces the approval gates and the HIGH/CRITICAL risk block.</li>
+        <li>Creates the feature branch and coordinates the commit, push and PR.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Specialist agents</h3>
+      <p class="desc">Eight agents, one per SDLC stage.</p>
+      <ul>
+        <li>Each has a small tool list (planning agents cannot run shell commands).</li>
+        <li>Only <code>implementation-agent</code> and <code>verify-agent</code> edit code files; only the implementer touches source.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Skills and rules</h3>
+      <p class="desc">Shared know-how and policy.</p>
+      <ul>
+        <li><strong>Skills</strong> are loaded by agents for review checklists, PR templates and Jira calls.</li>
+        <li><strong>Rules</strong> in <code>.claude/rules/</code> are project instructions that every session follows.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Guardrails (hooks)</h3>
+      <p class="desc">Scripts the Claude Code harness runs automatically.</p>
+      <ul>
+        <li>Block destructive prompts and risky tool calls.</li>
+        <li>Run the unit tests after Python edits.</li>
+        <li>Keep the README API reference in sync.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Integrations</h3>
+      <p class="desc">External systems reached through MCP.</p>
+      <ul>
+        <li><strong>Jira</strong>: pull the ticket, comment, transition.</li>
+        <li><strong>GitHub</strong> (<code>gh</code> CLI): branch, push, PR.</li>
+        <li>Confluence is available through the Atlassian connector.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Document store</h3>
+      <p class="desc">The shared memory between stages.</p>
+      <ul>
+        <li><code>docs/&lt;ticket-id-lowercase-no-dash&gt;/</code>, e.g. <code>docs/claude4/</code>.</li>
+        <li>Every document carries YAML front matter with its approval state.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Design principles</h2>
+  <table>
+    <tr><th>Principle</th><th>How it shows up</th></tr>
+    <tr><td>Separation of duties</td><td>Orchestrator coordinates; implementer writes source; verifier writes tests; reviewer is read-only.</td></tr>
+    <tr><td>Least privilege</td><td>Each agent lists only the tools it needs in its front matter.</td></tr>
+    <tr><td>Human in the loop</td><td>Three approval gates; <code>approved</code> is set only after the human actually approves.</td></tr>
+    <tr><td>Traceability</td><td>Numbered items (FR-N, NFR-N, C-N, DD-NN, KL-N, RISK-NN, T-NN, FIND-NN) link each stage to the next.</td></tr>
+    <tr><td>Honest reporting</td><td>Test counts are reported as run, passed, failed and skipped, exactly as observed.</td></tr>
+  </table>
+</section>
+
+<!-- ============ AGENTS ============ -->
+<section class="tab" id="agents">
+  <h2>Orchestrator</h2>
+  <div class="card">
+    <h3>sdlc-orchestrator</h3>
+    <span class="badge">Master agent</span>
+    <p class="desc">Runs the whole pipeline from one prompt by invoking each specialist in order, enforcing the gates and keeping the developer informed.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Edit, Bash, Glob, Grep, Agent</dd>
+      <dt>Skills</dt><dd><code>jira-mcp-sync</code></dd>
+      <dt>Input</dt><dd>A Jira ticket ID (e.g. <code>CLAUDE-4</code>) or a feature description.</dd>
+      <dt>Does</dt><dd>Prints the status board, delegates each stage, pauses at gates, creates the feature branch, and coordinates the commit and PR. It does not write source code or tests itself.</dd>
+    </dl>
+  </div>
+
+  <h2>Specialist agents</h2>
+
+  <div class="card">
+    <h3>1. requirements-agent</h3>
+    <span class="badge">Stage 1</span><span class="badge gate">Approval gate</span>
+    <p class="desc">Senior business analyst. Turns a ticket or description into structured requirements.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Glob</dd>
+      <dt>Skills</dt><dd><code>jira-mcp-sync</code></dd>
+      <dt>Does</dt><dd>Writes testable Functional Requirements (FR-N), Non-Functional Requirements (NFR-N) and Constraints (C-N, each FIXED or ASSUMED). Does not invent requirements.</dd>
+      <dt>Output</dt><dd><code>requirements.md</code></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>2. architecture-agent</h3>
+    <span class="badge">Stage 2</span><span class="badge auto">No gate</span>
+    <p class="desc">Principal architect. Designs the simplest system that meets the requirements.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Glob</dd>
+      <dt>Does</dt><dd>Defines components and interfaces, data flow, decision records (DD-NN) and known limitations (KL-N). Prefers the standard library.</dd>
+      <dt>Output</dt><dd><code>architecture.md</code></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>3. design-review-agent</h3>
+    <span class="badge">Stage 3</span><span class="badge gate">Approval gate</span>
+    <p class="desc">Senior staff engineer running an adversarial review before any code exists.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Glob</dd>
+      <dt>Does</dt><dd>Records each risk as RISK-NN with severity, scenario, mitigation and status (OPEN / ACCEPTED / FIXED). Open HIGH or CRITICAL risks block Stage 4.</dd>
+      <dt>Output</dt><dd><code>design-review.md</code></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>4. impl-plan-agent</h3>
+    <span class="badge">Stage 4</span><span class="badge gate">Approval gate</span>
+    <p class="desc">Tech lead. Turns the approved design into an actionable plan.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Glob</dd>
+      <dt>Does</dt><dd>Phases and atomic tasks (T-NN) with dependencies and parallel groups; lists exactly which files each task may touch; maps each acceptance criterion to a test.</dd>
+      <dt>Output</dt><dd><code>impl-plan.md</code></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>5. implementation-agent</h3>
+    <span class="badge">Stage 5</span><span class="badge auto">No gate</span>
+    <p class="desc">Senior engineer. Writes production code only.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Edit, Glob, Grep, Bash</dd>
+      <dt>Does</dt><dd>Works through the plan in dependency order, edits only the files the plan lists and runs a quick sanity check after each task. Does not write tests, commit or push.</dd>
+      <dt>Output</dt><dd>Files under <code>src/</code></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>6. code-review-agent</h3>
+    <span class="badge">Stage 6</span><span class="badge auto">No gate</span>
+    <p class="desc">Senior engineer doing a pre-merge review. Read-only.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Glob, Grep</dd>
+      <dt>Skills</dt><dd><code>code-review-checklist</code></dd>
+      <dt>Does</dt><dd>Reports findings (FIND-NN) with file:line, severity, scenario and a concrete fix. CRITICAL and HIGH block merge; MEDIUM and LOW are advisory.</dd>
+      <dt>Output</dt><dd>Findings report ending with counts by severity.</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>7. verify-agent</h3>
+    <span class="badge">Stage 7</span><span class="badge auto">No gate</span>
+    <p class="desc">QA engineer. Writes and runs the tests and reports what actually happened.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Edit, Glob, Grep, Bash</dd>
+      <dt>Does</dt><dd>Writes unit and integration tests, extends existing test files without weakening them, and runs the full suite. Fixes test bugs but never edits source to make a test pass; source bugs go back to the implementer.</dd>
+      <dt>Output</dt><dd><code>tests/test_&lt;module&gt;.py</code> and real run counts.</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h3>8. pr-agent</h3>
+    <span class="badge">Stage 8</span><span class="badge auto">No gate</span>
+    <p class="desc">Tech lead writing a PR that reviewers can approve with confidence.</p>
+    <dl>
+      <dt>Tools</dt><dd>Read, Write, Glob, Bash</dd>
+      <dt>Skills</dt><dd><code>pr-description-template</code>, <code>jira-mcp-sync</code></dd>
+      <dt>Does</dt><dd>Writes the PR body: summary, changes, how to test, test evidence, known limitations and a reviewer checklist.</dd>
+      <dt>Output</dt><dd><code>pr-description.md</code> and the GitHub PR.</dd>
+    </dl>
+  </div>
+
+  <h2>Skills</h2>
+  <table>
+    <tr><th>Skill</th><th>Used by</th><th>Purpose</th></tr>
+    <tr><td><code>code-review-checklist</code></td><td>code-review-agent</td><td>Checklist, severity definitions and finding format.</td></tr>
+    <tr><td><code>jira-mcp-sync</code></td><td>orchestrator, requirements-agent, pr-agent</td><td>Jira calls: pull the ticket, post stage comments, transition status.</td></tr>
+    <tr><td><code>pr-description-template</code></td><td>pr-agent</td><td>Structure and rules for the PR description.</td></tr>
+  </table>
+
+  <h2>Slash commands</h2>
+  <table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>/run-orchestrator [ticket or description]</code></td><td>Starts the full pipeline. With no argument it prints the status board and asks for input.</td></tr>
+    <tr><td><code>/gather-requirements</code></td><td>Runs the requirements step on its own.</td></tr>
+    <tr><td><code>/design-arch</code></td><td>Runs the architecture step on its own.</td></tr>
+    <tr><td><code>/review-code</code></td><td>Runs the code review step on its own.</td></tr>
+  </table>
+</section>
+
+<!-- ============ CONFIGURATION ============ -->
+<section class="tab" id="configuration">
+  <h2>Project rules (<code>.claude/rules/</code>)</h2>
+  <table>
+    <tr><th>Rule file</th><th>What it enforces</th></tr>
+    <tr><td><code>sdlc-pipeline.md</code></td><td>Each stage is done by its specialist; docs live in <code>docs/&lt;ticket&gt;/</code>; gates after Stages 1, 3 and 4; implementer edits only planned files and never commits; verifier never edits source; deferred criteria become waivers.</td></tr>
+    <tr><td><code>doc-frontmatter.md</code></td><td>Every generated doc starts with YAML front matter: title, ticket, created, created_by, hitl_status, approved_by, approved_on, revision.</td></tr>
+    <tr><td><code>git-workflow.md</code></td><td>Branches named <code>feature/&lt;ticket&gt;-&lt;slug&gt;</code>, based on the starting branch; stage files by name; commit format <code>&lt;type&gt;: &lt;summary&gt; (&lt;TICKET&gt;)</code>; no amend or force-push of pushed commits; a PR is done only when its URL is printed and <code>gh pr view</code> confirms it is open.</td></tr>
+    <tr><td><code>security.md</code></td><td>No hardcoded secrets, placeholders only in scripts, never print secret values, scan diffs for token patterns before committing, rotate anything exposed.</td></tr>
+  </table>
+
+  <h2>Document front matter</h2>
+<pre>---
+title: &lt;document title&gt;
+ticket: CLAUDE-4
+created: 2026-10-13T16:05:00+05:30
+created_by: requirements-agent
+hitl_status: pending-review | approved | revision-requested | not-required
+approved_by: &lt;human name or null&gt;
+approved_on: &lt;ISO 8601 or null&gt;
+revision: 1
+---</pre>
+
+  <h2>Hooks (<code>.claude/settings.json</code>)</h2>
+  <table>
+    <tr><th>Event</th><th>Matcher</th><th>Script</th><th>Effect</th></tr>
+    <tr><td><code>UserPromptSubmit</code></td><td>all prompts</td><td><code>user_prompt_hook.py</code></td><td>Blocks prompts that ask for destructive commands (e.g. <code>git reset --hard</code>, force-push, <code>rm -rf</code> on root or home, SQL DROP, <code>--no-verify</code>).</td></tr>
+    <tr><td><code>PreToolUse</code></td><td><code>Write|Edit|Bash</code></td><td><code>guard_tools_hook.py</code></td><td>Blocks writes to <code>.env</code> files and force-push commands.</td></tr>
+    <tr><td><code>PostToolUse</code></td><td><code>Write|Edit</code></td><td><code>src/sync_docs.py</code></td><td>Regenerates the <code>## API Reference</code> section of <code>README.md</code> from docstrings.</td></tr>
+    <tr><td><code>PostToolUse</code></td><td><code>Write|Edit</code></td><td><code>run_tests_hook.py</code></td><td>After a Python edit under <code>src/</code> or <code>tests/</code>, runs <code>python -m unittest discover -s tests</code> and feeds failures back to Claude.</td></tr>
+  </table>
+  <p>A git <code>pre-push</code> hook (<code>hooks/pre-push.template</code>, installed once per clone with <code>sh install_hook.sh</code>) also runs <code>src/sync_docs.py</code> on every push and blocks the push if no Python interpreter is found. Edit the template, not the installed copy.</p>
+
+  <h2>Credentials and MCP</h2>
+  <ul>
+    <li>Secrets are read from environment variables (<code>ATLASSIAN_API_TOKEN</code>, <code>GITHUB_TOKEN</code>), never stored in files.</li>
+    <li><code>.env.example</code> documents the variables; copy it to <code>.env.local</code> (gitignored) and load it with <code>scripts/setup-mcp-env.ps1</code> or <code>.sh</code> before starting Claude Code.</li>
+    <li><code>.mcp.json</code> and <code>.env.local</code> are gitignored and must never be staged.</li>
+    <li><code>enableAllProjectMcpServers</code> is on in <code>settings.json</code>.</li>
+  </ul>
+
+  <h2>Running the tests</h2>
+<pre>python -m unittest discover -s tests</pre>
+  <p>Tests add <code>src/</code> to <code>sys.path</code> and import modules directly (e.g. <code>from slugify import slugify</code>); <code>src/</code> and <code>tests/</code> have no <code>__init__.py</code>.</p>
+</section>
+
+<!-- ============ COMMUNICATION ============ -->
+<section class="tab" id="communication">
+  <h2>How the pieces talk to each other</h2>
+  <p>Agents do not share a conversation. They communicate through <strong>documents on disk</strong> and through <strong>messages passed by the orchestrator</strong>, which is the only party that talks to the developer.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Developer ↔ Orchestrator</h3>
+      <ul>
+        <li>The developer starts a run with <code>/run-orchestrator &lt;ticket&gt;</code>.</li>
+        <li>The orchestrator reports a summary and path at each gate and waits.</li>
+        <li>The developer replies approve or revise.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Orchestrator ↔ Specialists</h3>
+      <ul>
+        <li>The orchestrator starts each specialist with a brief and the paths of its input documents.</li>
+        <li>The specialist writes its output file and hands back a report.</li>
+        <li>That report is the agent's own words, not the developer's approval.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Specialist → Specialist</h3>
+      <ul>
+        <li>Indirect, through files in <code>docs/&lt;ticket&gt;/</code>.</li>
+        <li>Requirements feed architecture, which feeds design review, then the plan, then code, tests and the PR.</li>
+        <li>Numbered IDs (FR-N, RISK-NN, T-NN) let each document point back to its source.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Pipeline ↔ External systems</h3>
+      <ul>
+        <li><strong>Jira</strong> over MCP: pull the ticket; post stage comments; transition to "In Review".</li>
+        <li><strong>GitHub</strong> over <code>gh</code>: push the branch, open the PR, confirm with <code>gh pr view</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Human-in-the-loop approval</h2>
+  <p>Approval state lives in each document's front matter, so it is visible and auditable.</p>
+  <table>
+    <tr><th><code>hitl_status</code></th><th>Meaning</th></tr>
+    <tr><td><code>pending-review</code></td><td>Written and waiting at a gate.</td></tr>
+    <tr><td><code>approved</code></td><td>A human approved. <code>approved_by</code> and <code>approved_on</code> are set.</td></tr>
+    <tr><td><code>revision-requested</code></td><td>A human asked for changes. The revised doc increases <code>revision</code> and returns to <code>pending-review</code>.</td></tr>
+    <tr><td><code>not-required</code></td><td>No gate (e.g. the architecture draft before its review).</td></tr>
+  </table>
+  <div class="note"><strong>Trust boundary.</strong> A document is marked <code>approved</code> only on the developer's own message. A specialist's report, a task notification or a relayed message is never treated as approval. In the CLAUDE-4 run, the orchestrator declined to act on a relayed approval until the main session recorded the developer's own words in the front matter.</div>
+
+  <h2>Hand-offs when something is missing</h2>
+  <ul>
+    <li>If a subagent lacks a tool (for example Jira access), it stops and says so rather than guessing the ticket's content. The main session then fetches the data and passes it on.</li>
+    <li>Jira comments and transitions are done by the main session, which holds the Jira tools, when the developer asks.</li>
+  </ul>
+
+  <h2>Jira and GitHub touchpoints</h2>
+  <table>
+    <tr><th>Stage</th><th>Interaction</th></tr>
+    <tr><td>1</td><td>Pull the ticket (summary, description, acceptance criteria, labels, priority); comment when requirements are captured.</td></tr>
+    <tr><td>6</td><td>Comment with the code review counts by severity.</td></tr>
+    <tr><td>8</td><td>Push the branch and open the PR; comment the PR URL on the ticket; transition the ticket to "In Review".</td></tr>
+  </table>
+</section>
+
+<!-- ============ WALKTHROUGH ============ -->
+<section class="tab" id="walkthrough">
+  <h2>Worked example: CLAUDE-4 — a <code>slugify</code> utility</h2>
+  <p>Ticket: <em>"Add a slugify utility to convert text into URL-safe slugs"</em> (Task, Medium, label <code>orchestrator-validation</code>). A small, low-risk story chosen to validate the pipeline end to end. Six acceptance criteria: lowercase and trim, strip other characters, collapse spaces and hyphens, return an empty string when nothing is left, and raise <code>TypeError</code> for non-strings.</p>
+
+  <div class="step gate">
+    <h4>0. Start</h4>
+    <p><code>/run-orchestrator</code> printed the status board and asked for a ticket. The developer answered <code>CLAUDE-4</code>. The orchestrator could not reach Jira, so the main session fetched the ticket and passed its content on.</p>
+  </div>
+
+  <div class="step gate">
+    <h4>1. Requirements — approved</h4>
+    <p><code>docs/claude4/requirements.md</code>: 15 functional requirements, 7 non-functional and 10 constraints. It flagged assumptions for the developer to confirm, e.g. A-2: leading and trailing hyphens are stripped. The developer approved; front matter set to <code>approved</code>.</p>
+  </div>
+
+  <div class="step">
+    <h4>2. Architecture</h4>
+    <p>New <code>src/slugify.py</code> exposing <code>slugify(text: str) -> str</code> using only <code>re</code>. Order of operations: type check, remove disallowed characters, collapse whitespace and hyphen runs, strip edge hyphens, lowercase. Six decision records and five known limitations.</p>
+  </div>
+
+  <div class="step gate">
+    <h4>3. Design review — approved</h4>
+    <p>Six risks, none HIGH or CRITICAL, so Stage 4 was not blocked. One MEDIUM (assumptions still worded as open) was closed by the developer's approval; the rest were LOW (exact test imports, an implicit criterion-to-test mapping, a typo in a worked example, and two accepted limitations).</p>
+  </div>
+
+  <div class="step gate">
+    <h4>4. Implementation plan — approved</h4>
+    <p>11 tasks (T-01 to T-11) touching only <code>src/slugify.py</code> and <code>tests/test_slugify.py</code>. It fixed the exact test imports, mapped every acceptance criterion to a test, and included a timing test for the performance requirement.</p>
+  </div>
+
+  <div class="step">
+    <h4>5. Implementation</h4>
+    <p>The branch <code>feature/claude-4-slugify</code> was created from <code>main</code>, and <code>implementation-agent</code> wrote <code>src/slugify.py</code> with two precompiled ASCII regexes.</p>
+  </div>
+
+  <div class="step">
+    <h4>6. Code review</h4>
+    <p><code>code-review-agent</code> found 0 issues at any severity. That review was done by reading, not by running the code.</p>
+  </div>
+
+  <div class="step">
+    <h4>7. Verify</h4>
+    <p><code>verify-agent</code> wrote 20 tests in <code>tests/test_slugify.py</code> and found no source bugs. The full suite, re-run by the orchestrator: <strong>84 run, 83 passed, 0 failed, 1 skipped</strong>. The skip is an existing placeholder from CLAUDE-2, not part of this ticket.</p>
+  </div>
+
+  <div class="step">
+    <h4>8. Pull request</h4>
+    <p><code>pr-agent</code> wrote <code>docs/claude4/pr-description.md</code>. One commit, <code>feat: add slugify utility for URL-safe slugs (CLAUDE-4)</code>, with seven files staged by name. PR #5 was opened against <code>main</code> and confirmed open with <code>gh pr view</code>.</p>
+  </div>
+
+  <h2>Try it yourself</h2>
+<pre>/run-orchestrator CLAUDE-4        # or any ticket ID / feature description
+# approve at Stage 1, Stage 3 and Stage 4
+# the pipeline then runs through to an open PR</pre>
+</section>
+
+<!-- ============ CONCLUSION ============ -->
+<section class="tab" id="conclusion">
+  <h2>Summary</h2>
+  <p>The project shows that a ticket can move from Jira to an open, reviewed pull request through a chain of narrowly scoped agents, with the developer deciding at the three points that matter most: what to build, whether the design is sound, and whether the plan is right to start coding.</p>
+
+  <h2>What works well</h2>
+  <ul>
+    <li><strong>Clear separation of duties</strong>: coordination, implementation, testing and review are done by different agents.</li>
+    <li><strong>Traceable artefacts</strong>: every stage leaves a document with numbered items and an approval record.</li>
+    <li><strong>Guardrails that run automatically</strong>: hooks block destructive prompts, secret edits and force-pushes, and re-run the tests after edits.</li>
+    <li><strong>Honest reporting</strong>: test results and code-review scope are stated as observed, including what was skipped or only read.</li>
+  </ul>
+
+  <h2>Lessons from the CLAUDE-4 run</h2>
+  <ul>
+    <li>Subagents may not have every tool the main session has (Jira access was missing). The main session fills the gap and passes the data on.</li>
+    <li>Approval must come from the developer's own message. Relayed or automated notices are not approval, and the pipeline correctly refused to proceed on one.</li>
+    <li>Acceptance-criteria numbering should be copied from the ticket into the requirements, not inferred later.</li>
+    <li>Timing tests with fixed thresholds can be flaky on slow machines; changing one needs approval and a recorded waiver.</li>
+  </ul>
+
+  <h2>Possible next steps</h2>
+  <ul>
+    <li>Reproduce the Jira acceptance criteria verbatim in <code>requirements.md</code>.</li>
+    <li>Give the orchestrator access to the Jira tools so stage comments and the "In Review" transition happen inside the run.</li>
+    <li>Make <code>sync_docs.py</code> run only on Python edits to avoid unnecessary README churn.</li>
+    <li>Run the pipeline on a larger ticket to exercise the revision loop and the HIGH-risk block.</li>
+  </ul>
+</section>
+
+</main>
+<footer>Built from the agent definitions, rules, hooks and documents in this repository (<code>.claude/</code>, <code>docs/</code>, <code>src/</code>, <code>tests/</code>).</footer>
+
+<script>
+  const buttons = document.querySelectorAll('#tabs button');
+  const panels = document.querySelectorAll('.tab');
+  function show(id) {
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+    panels.forEach(p => p.classList.toggle('active', p.id === id));
+    if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+    window.scrollTo(0, 0);
+  }
+  buttons.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+  const initial = location.hash.slice(1);
+  if (initial && document.getElementById(initial)) show(initial);
+</script>
+</body>
+</html>
